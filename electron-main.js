@@ -615,7 +615,10 @@ app.whenReady().then(async () => {
   ensureRobloxDevCommand();
   ensureMcpRegistered();
   createWindow();
-  setupAutoUpdate(mainWindow);
+  // setupAutoUpdate is NOT called here: createWindow() already passes it as
+  // onReady, which sdk/ui/window.js fires on 'ready-to-show'. Calling it twice
+  // ran the updater twice per launch and wired a second set of
+  // electron-updater listeners.
 });
 app.on('window-all-closed', () => cleanup());
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
