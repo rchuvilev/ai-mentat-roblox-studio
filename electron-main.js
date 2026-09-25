@@ -16,6 +16,7 @@ const { registerPtyIpc, resolveHelperPath } = require('./sdk/logic/pty');
 const { detectMcpInstalled, removeAllScopes } = require('./sdk/logic/mcp');
 const { createWindow: createWindow_ } = require('./sdk/ui/window');
 const { setupAutoUpdate } = require('./sdk/logic/auto-update');
+const { resolveDataDir } = require('./sdk/utils/data-dir');
 
 function shellEnv() {
   return sdkShellEnv({ home: os.homedir() });
@@ -25,6 +26,18 @@ function shellEnv() {
 function execSyncEnv(cmd, opts = {}) {
   return execSync(cmd, { ...opts, env: { ...shellEnv(), ...opts.env } });
 }
+
+// ─── Data directory ────────────────────────────────────────────────────────
+//
+// dataDir was referenced by the settings store and the log directory but never
+// defined, so the main process threw "ReferenceError: dataDir is not defined"
+// at module scope and the app died before any window — it could not start at
+// all. resolveDataDir follows the family contract,
+// /.hexstack-app/<app>/data, falling back to ~/.hexstack-app/<app>/data when
+// the filesystem root is not user-writable (sdk/utils/data-dir.js), and is
+// what every sibling app uses.
+
+const dataDir = resolveDataDir('ai-mentat-roblox-studio');
 
 // ─── Settings ──────────────────────────────────────────────────────────────
 
@@ -64,6 +77,14 @@ function appendRojoLog(text) {
 }
 
 // ─── Window ────────────────────────────────────────────────────────────────
+
+// Declared, not left implicit. createWindow() assigned `mainWindow = ...`
+// without ever declaring it, so it only existed as an implicit global from the
+// moment the window was built. appendRojoLog() reads it, and reading an
+// undeclared name that has not been assigned yet throws ReferenceError rather
+// than yielding undefined — so any Rojo output before the window existed blew
+// up as an unhandled rejection. Both sibling apps declare it the same way.
+let mainWindow;
 
 function createWindow() {
   mainWindow = createWindow_({
