@@ -6,21 +6,23 @@
   <title>Roblox Studio Mentat</title>
   <link rel="stylesheet" href="sdk/ui/base.css">
   <link rel="stylesheet" href="app.css">
+  <!-- Before the inline script below, which builds the flow at parse time. -->
+  <script src="sdk/ui/steps.js"></script>
+  <script src="sdk/ui/modal.js"></script>
 </head>
 <body>
 
 <div class="top-bar">
   <span class="top-bar__title">Roblox Studio Mentat</span>
   <div class="top-bar__spacer"></div>
+  <button type="button" class="top-bar__icon" id="icon-faq">FAQ</button>
 </div>
 
-<div class="tab-bar">
-  <button class="active" data-tab="projects">Projects</button>
-  <button data-tab="setup">Setup</button>
-  <button data-tab="faq">FAQ</button>
-</div>
+<!-- One screen: set the toolchain up, then work on projects.
+     The FAQ opens from the header — it is reference material, not a stage. -->
+<div id="flow"></div>
 
-<div class="tab-content">
+<div class="tab-content" id="content-source" hidden>
   <!-- Tab 1: Projects -->
   <div id="tab-projects" class="panel active">
     <div class="sidebar" id="sidebar">
@@ -207,14 +209,43 @@ CLAUDE.md</pre>
 
 <script>
   // Tab switching
-  document.querySelectorAll('.tab-bar button').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.tab-bar button').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-      btn.classList.add('active');
-      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
-    });
+  const flow = HexKit.createSteps(document.getElementById('flow'), {
+    steps: [
+      { id: 'setup',    title: 'Set up the toolchain', hint: 'Rojo, the Studio plugin, the MCP server and the skills' },
+      { id: 'projects', title: 'Your projects',        hint: 'Create or open a place and sync it with Studio' },
+    ],
   });
+
+  // Moved, not rebuilt: every id and handler inside these panels keeps working.
+  flow.body('setup').appendChild(document.querySelector('#tab-setup .panel-scroll'));
+  flow.body('projects').appendChild(document.getElementById('tab-projects'));
+  document.getElementById('tab-projects').classList.add('active');
+  // Projects IS the product, not a form, so its body gets real height.
+  flow.body('projects').classList.add('steps__body--fill');
+
+  const faqBody = document.querySelector('#tab-faq .panel-scroll');
+  document.getElementById('icon-faq').addEventListener('click',
+    () => HexKit.openModal({ title: 'FAQ', content: faqBody }));
+
+  // Projects is reachable from the start — someone with the toolchain already
+  // installed should not have to walk setup again. Setting it active is what
+  // makes its header clickable, and that also opens it, so re-open setup after.
+  flow.setState('projects', 'active');
+  flow.open('setup');
+
+  /**
+   * Setup is "done" only when all four pieces are present. Until then the step
+   * stays open, because a half-installed toolchain is exactly when a user needs
+   * to see which piece is missing.
+   */
+  let setupWasReady = null;
+  function applySetupFlow(ready) {
+    flow.setNote('setup', ready ? 'Ready' : '');
+    if (ready === setupWasReady) return;
+    setupWasReady = ready;
+    if (ready) { flow.setState('setup', 'done'); flow.open('projects'); }
+    else { flow.setState('setup', 'active'); }
+  }
 
   // Helpers
   function setDot(id, c) { document.getElementById(id).className = 'status-dot ' + c; }
@@ -376,6 +407,7 @@ CLAUDE.md</pre>
     else toggle('mcp-install-btn', 'mcp-uninstall-btn');
     const skills = await window.electronAPI.skillsStatus();
     setDot('skills-dot', skills.installed ? 'green' : (skills.present > 0 ? 'amber' : 'red'));
+    applySetupFlow(!!(rojo.installed && plugin.installed && mcp.installed && skills.installed));
     if (skills.installed) {
       document.getElementById('skills-install-btn').textContent = 'Reinstall skills';
       setMsg('skills-msg', skills.present + ' skills installed', 'success');
